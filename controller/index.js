@@ -1,21 +1,48 @@
 const puppeteer = require('puppeteer');
+const axios = require('axios');
 const { Configuration, OpenAIApi } = require("openai");
 const session = require('express-session');
 
 // Generate an AI response based on a prompt
 async function generateAIResponse(prompt) {
-    const configuration = new Configuration({
-        apiKey: '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',
-    });
+    // try {
+    //     const configuration = new Configuration({
+    //         apiKey: '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',
+    //     });
 
-    const openai = new OpenAIApi(configuration);
+    //     const openai = new OpenAIApi(configuration);
 
-    const completion = await openai.createCompletion({
-        model: 'text-davinci-003',
-        prompt,
-    });
+    //     const completion = await openai.createCompletion({
+    //         model: 'text-davinci-003',
+    //         prompt,
+    //     });
 
-    return completion.data.choices[0].text.trim();
+    //     return completion.data.choices[0].text.trim();
+    // } catch (err) {
+    //     console.error(err);
+    // }
+    const openaiAPIKey = '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';
+    const headers = {
+        "Authorization": "Bearer " + openaiAPIKey,
+        "Content-Type": "application/json"
+    };
+
+    const data = {
+        model: "gpt-3.5-turbo",
+        messages: [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    };
+    try {
+        const response = await axios.post("https://api.openai.com/v1/chat/completions", data, { headers });
+        // console.log(response.data.choices[0].message);
+        return response.data.choices[0].message.content;
+    } catch (error) {
+        throw "something went wrong";
+    }
 }
 
 // Scrape anime and manga data from a website
@@ -49,6 +76,39 @@ async function scrapeData() {
     return { animeTitles, mangaTitles };
 }
 
+async function detectConversation(messages) {
+    // Set up OpenAI API request
+    const prompt = `Is this a conversation?\n\n${messages}`;
+    const response = await generateAIResponse(prompt);
+
+    // Check if response indicates input is a conversation
+    const isConversation = response.includes('Yes');
+
+    // Count number of unique usernames mentioned in conversation
+    const usernames = [...new Set(messages.match(/User ?\d+:/g))]; // Match all occurrences of "User" followed by a number
+    const numUsers = usernames.length;
+
+    // Split messages into array of conversations with unique keys
+    let conversations = [];
+    messages.split('\n').forEach((message) => {
+        let userMessage = message.replace(usernames, "");
+        if (userMessage) {
+            conversations.push({ message: userMessage });
+        }
+    });
+
+    // Determine if conversation is between one or more users
+    const isMultiUserConversation = numUsers > 1;
+
+    // Return result
+    return {
+        isConversation,
+        conversations,
+        numUsers,
+        isMultiUserConversation,
+    };
+}
+
 const aiChatAi = async (req, res) => {
     try {
         let ai1Prompt = '';
@@ -77,19 +137,16 @@ const aiChatAi = async (req, res) => {
         }
 
         // AI 1 generates a prompt based on the current title and AI 2's response
-        ai1Prompt = `Aliee Beta: What do you think of "${currentTitle}"?`;
-        if (ai2Response) {
-            ai1Prompt += ` I think "${ai2Response}"`;
-        }
+        ai1Prompt = `create brief forum discussion between one or more user on "${currentTitle}" staying within the bounds of anime and manga`;
 
         // AI 2 generates a response based on the prompt
         ai2Response = await generateAIResponse(ai1Prompt);
 
         // AI 1 generates a response based on AI 2's response
-        ai1Response = await generateAIResponse(`Aliee Beta: ${ai2Response}`);
+        ai1Response = await generateAIResponse(`create brief forum discussion between one or more user on ${ai2Response}`);
 
         // AI 2 generates a response based on AI 1's response
-        const ai2Prompt = `Aliee Charlie: ${ai1Response}`;
+        const ai2Prompt = `create brief forum discussion between one or more user on ${ai1Response}`;
         const ai2ShouldRespond = Math.random() < 0.75; // AI 2 randomly decides whether to respond to AI 1's response
         let ai2ResponseToAi1Response = '';
         if (ai2ShouldRespond) {
@@ -102,12 +159,56 @@ const aiChatAi = async (req, res) => {
         sessionData.conversationStartTime = sessionData.conversationStartTime || Date.now(); // Set conversation start time if it doesn't exist
         req.session.data = sessionData;
 
+        const modifiedMessages = []; // Existing array to push the messages into
+        const conversation = await detectConversation(`${ai2Response} ${ai1Response} ${ai2ResponseToAi1Response}`);
+        if (conversation.isConversation || conversation.conversations.length != 0 || conversation.numUsers != 0) {
+            const conversationalArray = conversation.conversations;
+            const firstConversation = conversationalArray[0];
+            const firstMessage = {
+                message: firstConversation.message.replace(/User ?\d+:/g, ""),
+                user_id: 2,
+                type: 'start'
+            };
+            const lastMessage = {
+                message: conversationalArray[conversationalArray.length - 1].message.replace(/User ?\d+:/g, ""),
+                user_id: 2,
+                type: 'comment'
+            };
+            modifiedMessages.push(firstMessage);
+            const getRandomUserId = () => {
+                const userIds = [3, 4];
+                return userIds[Math.floor(Math.random() * userIds.length)];
+            };
+            let lastUserId; // Variable to store the last user ID
+            for (let i = 1; i < conversationalArray.length - 1; i++) {
+                const conversation = conversationalArray[i];
+
+                // Determine the next user ID based on the last user ID
+                let nextUserId;
+                if (lastUserId === 3) {
+                    nextUserId = 4;
+                } else if (lastUserId === 4) {
+                    nextUserId = 3;
+                } else {
+                    nextUserId = getRandomUserId(); // Assign a random user ID initially
+                }
+
+                const otherMessages = {
+                    message: conversation.message.replace(/User ?\w+: ?/g, ''),
+                    user_id: nextUserId,
+                    type: 'comment'
+                };
+
+                modifiedMessages.push(otherMessages);
+                lastUserId = nextUserId; // Store the current user ID as the last user ID
+            }
+            modifiedMessages.push(lastMessage);
+
+            // console.log(modifiedMessages);
+        }
         // Send JSON response
         res.json({
-            ai1Prompt,
-            ai2Response,
-            ai1Response,
-            ai2ResponseToAi1Response
+            modifiedMessages,
         });
     } catch (error) {
         console.error(error);
@@ -116,46 +217,51 @@ const aiChatAi = async (req, res) => {
 };
 
 const respondtoUserMessage = async (req, res) => {
-    const message = req.body.message;
-    const configuration = new Configuration({
-        apiKey: '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',
-    });
-
-    const openai = new OpenAIApi(configuration);
-
-    // Set up the initial prompt for the ChatGPT model
-    let prompt = `User: ${message}\nAI: `;
-
-    // Wait for AI response for up to 2 minutes
-    let aiResponse = '';
-    const timeout = Date.now() + 120000;
-    while (Date.now() < timeout && aiResponse === '') {
-        // Call the ChatGPT model to generate an AI response based on the prompt
-        const completion = await openai.createCompletion({
-            model: 'text-davinci-003',
-            prompt,
+    try {
+        const message = req.body.message;
+        const configuration = new Configuration({
+            apiKey: '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',
         });
 
-        // Extract AI response from ChatGPT output
-        aiResponse = completion.data.choices[0].text.trim();
+        const openai = new OpenAIApi(configuration);
 
-        // Wait for 5 seconds before checking again
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        // Set up the initial prompt for the ChatGPT model
+        let prompt = `User: ${message}\nAI: `;
+
+        // Wait for AI response for up to 2 minutes
+        let aiResponse = '';
+        const timeout = Date.now() + 120000;
+        while (Date.now() < timeout && aiResponse === '') {
+            // Call the ChatGPT model to generate an AI response based on the prompt
+            const completion = await openai.createCompletion({
+                model: 'text-davinci-003',
+                prompt,
+            });
+
+            // Extract AI response from ChatGPT output
+            aiResponse = completion.data.choices[0].text.trim();
+
+            // Wait for 5 seconds before checking again
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
+        // If there's no response from the AI after 2 minutes, ask the user if there's anything else the bot could help with
+        if (aiResponse === '') {
+            aiResponse = "I'm sorry, I didn't get a chance to respond. Is there anything else I can help you with?";
+        }
+
+        // Send AI response to user
+        res.json({
+            message: aiResponse
+        });
+    } catch (error) {
+        // Handle the error
+        console.error('Error:', error);
     }
-
-    // If there's no response from the AI after 2 minutes, ask the user if there's anything else the bot could help with
-    if (aiResponse === '') {
-        aiResponse = "I'm sorry, I didn't get a chance to respond. Is there anything else I can help you with?";
-    }
-
-    // Send AI response to user
-    res.json({
-        message: aiResponse
-    });
 }
-
 
 module.exports = {
     aiChatAi,
     respondtoUserMessage
+
 }
