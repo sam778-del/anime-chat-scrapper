@@ -54,5 +54,5 @@ app.listen(PORT, () => {
     console.log('App running at ' + PORT);
 });
 
-// Export the Express API
-module.exports = app;
+// // Export the Express API
+// module.exports = app;
