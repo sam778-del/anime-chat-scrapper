@@ -21,30 +21,33 @@ app.use(session({
 }));
 
 // Define the cron job
-const job = cron.schedule('*/5 * * * *', async () => {
-    // Run the function here
-    try {
-        await createRandomGroupChat();
-    } catch (error) {
-        console.log(error);
-    }
-});
+// const job = cron.schedule('*/5 * * * *', async () => {
+//     // Run the function here
+//     try {
+//         await createRandomGroupChat();
+//     } catch (error) {
+//         console.log(error);
+//     }
+// });
 
-const job2 = cron.schedule('* * * * * *', async () => {
-    // Run the function here
-    try {
-        // await checkComment();
-    } catch (error) {
-        console.log(error);
-    }
-});
+// const job2 = cron.schedule('* * * * * *', async () => {
+//     // Run the function here
+//     try {
+//         // await checkComment();
+//     } catch (error) {
+//         console.log(error);
+//     }
+// });
 
 // Start the cron job
-job.start();
-job2.start();
+// job.start();
+// job2.start();
 
-app.get('/ai-to-ai/chat', aiChatAi);
-app.post('/ai-to-user', respondtoUserMessage);
+// app.get('/ai-to-ai/chat', aiChatAi);
+// app.post('/ai-to-user', respondtoUserMessage);
+app.get("/", (req, res) => {
+    res.send("Express on Vercel");
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
