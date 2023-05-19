@@ -50,3 +50,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log('App running at ' + PORT);
 });
+
+// Export the Express API
+module.exports = app;
